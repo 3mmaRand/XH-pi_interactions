@@ -1,0 +1,251 @@
+---
+title: "Xh-pi interactions"
+author: "Emma Rand"
+date: "22/08/2019"
+output:
+  html_document: bookdown::html_document2
+  pdf_document: bookdown::pdf_document2
+  word_document: default
+bibliography: ref.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+# Data used
+data files in "../xhpi_data_new/" are in three directories, one for each data-set.
+
+* Neu_43_adv neutron diffraction
+* Res_43_adv high resolution
+* Temp_43_adv high temperature
+
+Number of structures in each varies
+
+Each protein has 3 files
+
+* 7a3h.pdb
+* 7a3h.hpml
+* 7a3h.pdb.report
+.report files are the plain text files containing information about the XH/pi interactions.
+
+Geometric constraints for this data was d<7 and theta<50, although cut-offs of d<4.3 angstroms and theta<25 deg are often used to define XH/pi interactions,  so many of the interactions reported are not actually XH/pi interactions.
+
+```{r pkgs}
+library(tidyverse)
+library(data.table)
+library(cluster)
+library(Rtsne)
+```
+
+```{r}
+# IMPORT HIGH RES
+directory <- "../xhpi_data_new/Res_43_adv/"
+reports <- list.files(path = directory, pattern = "*.pdb.report")
+number <- length(reports)
+
+highres <- do.call("rbind", 
+                   lapply(paste0(directory,"/", reports[1:number]),
+                          function(x) read.table(x, 
+                                                 header = TRUE,
+                                                 stringsAsFactors = FALSE)))
+
+# this results in 4305 interactions
+
+
+
+# IMPORT NEUTRON DIFFRACTION
+directory <- "../xhpi_data_new/Neu_43_adv/"
+reports <- list.files(path = directory, pattern = "*.pdb.report")
+number <- length(reports)
+
+neutron <- do.call("rbind", 
+                   lapply(paste0(directory,"/", reports[1:number]),
+                          function(x) read.table(x, 
+                                                 header = TRUE,
+                                                 stringsAsFactors = FALSE)))
+
+# this results in 772 interactions
+
+
+# IMPORT HIGH TEMPERATURE
+directory <- "../xhpi_data_new/Temp_43_adv/"
+reports <- list.files(path = directory, pattern = "*.pdb.report")
+number <- length(reports)
+
+hightemp <- do.call("rbind", 
+                   lapply(paste0(directory,"/", reports[1:number]),
+                          function(x) read.table(x, 
+                                                 header = TRUE,
+                                                 stringsAsFactors = FALSE)))
+
+# this results in 1788 interactions
+```
+
+## Number of interactions
+* neutron diffraction: `r nrow(neutron)`
+* high resolution:  `r nrow(highres)`
+* high temperature:  `r nrow(hightemp)`
+
+
+## Interaction types
+
+Raw counts, not normalised
+
+```{r}
+# crosstabulate donor type and acceptor types
+# highres
+highressum <- highres %>% 
+  group_by(x_atom_id, pi_res_id) %>% 
+  count() 
+
+ggplot(highressum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
+  geom_tile() +
+  ggtitle("High res") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+# neutron
+neutronsum <- neutron %>% 
+  group_by(x_atom_id, pi_res_id) %>% 
+  count()
+
+ggplot(neutronsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
+  geom_tile() +
+  ggtitle("Neutron") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+# hightemp
+hightempsum <- hightemp %>% 
+  group_by(x_atom_id, pi_res_id) %>% 
+  count()
+
+ggplot(hightempsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
+  geom_tile() +
+  ggtitle("High temp") + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+# Clustering mised data types
+
+ 
+
+
+distance calculation - gower distance
+clustering algorithm - partitioning aroung medoids
+selecting the number of clusters - silhouette width
+
+<!-- glimpse(neutron) -->
+<!--  testing on neutron because it has resolution data (others have xxxx) -->
+
+<!--  some variables will not used to cluster -->
+<!-- neutron2 <- neutron %>%  -->
+<!--   select(-x_res_num,  -->
+<!--          -x_atom_num,  -->
+<!--          -pdb,  -->
+<!--          -pi_res_num, -->
+<!--          -resolution) -->
+
+<!--  char need to be converted to factors -->
+<!-- neutron2 <- neutron2 %>% mutate_if(is.character,as.factor) -->
+<!-- glimpse(neutron2) -->
+
+<!--  calc distances without any transformations in first instance -->
+<!-- gower_dist <- daisy(neutron2, -->
+<!--                     metric = "gower") -->
+<!-- summary(gower_dist) -->
+
+<!--  which observations are least and most similar -->
+<!--  most similar i.e., min disimilarity -->
+<!-- gower_mat <- as.matrix(gower_dist) -->
+<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+<!--  least similar i.e., max disimilarity -->
+<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+<!--  cluster with PAM partitioning round medoids -->
+
+<!--  selecting the number of clusters with silhouette width -->
+<!--  calculating silhouette width for clusters ranging from 2 to cnum  -->
+<!--  for the PAM algorithm, we see that 3 clusters yields the highest value. -->
+<!-- sil_width <- c(NA) -->
+<!-- cnum <- 40 -->
+
+<!-- for(i in 2:cnum){ -->
+
+<!--   pam_fit <- pam(gower_dist, -->
+<!--                  diss = TRUE, -->
+<!--                  k = i) -->
+
+<!--   sil_width[i] <- pam_fit$silinfo$avg.width -->
+
+<!-- } -->
+
+<!--  Plot sihouette width (higher is better) -->
+
+<!-- plot(1:cnum, sil_width, -->
+<!--      xlab = "Number of clusters", -->
+<!--      ylab = "Silhouette Width") -->
+<!-- lines(1:cnum, sil_width) -->
+
+<!--  vis -->
+<!-- tsne_obj <- Rtsne(gower_dist, is_distance = TRUE) -->
+
+<!-- tsne_data <- tsne_obj$Y %>% -->
+<!--   data.frame() %>% -->
+<!--   setNames(c("X", "Y")) %>% -->
+<!--   mutate(cluster = factor(pam_fit$clustering)) -->
+
+<!-- ggplot(aes(x = X, y = Y), data = tsne_data) + -->
+<!--   geom_point(aes(color = cluster)) -->
+
+<!--  consider nature of the variables before clustering -->
+
+<!-- glimpse(neutron2) -->
+
+<!-- hist(neutron2$x_width) -->
+<!--  log the bfactors -->
+<!-- gower_dist <- daisy(neutron2, -->
+<!--                     metric = "gower", -->
+<!--                     type = list(logratio = 4, -->
+<!--                                 logratio = 8)) -->
+
+<!--  which observations are least and most similar -->
+<!--  most similar i.e., min disimilarity -->
+<!-- gower_mat <- as.matrix(gower_dist) -->
+<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+<!--  least similar i.e., max disimilarity -->
+<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+<!--  cluster with PAM partitioning round medoids -->
+
+<!--  selecting the number of clusters with silhouette width -->
+<!--  calculating silhouette width for clusters ranging from 2 to cnum  -->
+<!--  for the PAM algorithm, we see that 3 clusters yields the highest value. -->
+<!-- sil_width <- c(NA) -->
+<!-- cnum <- 40 -->
+
+<!-- for(i in 2:cnum){ -->
+
+<!--   pam_fit <- pam(gower_dist, -->
+<!--                  diss = TRUE, -->
+<!--                  k = i) -->
+
+<!--   sil_width[i] <- pam_fit$silinfo$avg.width -->
+
+<!-- } -->
+
+<!--  Plot sihouette width (higher is better) -->
+
+<!-- plot(1:cnum, sil_width, -->
+<!--      xlab = "Number of clusters", -->
+<!--      ylab = "Silhouette Width") -->
+<!-- lines(1:cnum, sil_width) -->
+
+# references

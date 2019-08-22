@@ -1,0 +1,15 @@
+Jack 22-08
+PDB cutoffs adjusted 
+* sequence length cutoff from 50-350 -> 100-900 residues. * number of chains in the asymmetric unit from 1 -> infinite
+* number of chains in the biological assembly has been set to 1. 
+* The data-set used to create the figure showing the correlation between resolution and frequency of reported XH/pi interactions is now contains 7300 structures (from 6100) 
+New dataset contains 2,041 structures with a resolution of 1.5A or less (previously ~170), and 159 structures with a resolution of 1.0A or less.
+
+geometric definition of XH/pi interactions 
+if a valid X atom was <4.3A of the ring center, and formed an angle of <25deg with the ring normal, it was reported as an XH/pi interaction. 
+Now includes an additional geometric cutoff in which the  X-H--ringcenter angle is >120deg. 
+
+--------------------
+I have carried out an initial clustering based on the Gower distance metric, and partitioning around medoids. That suggested ~60 clusters
+However, I need to discuss which variables should be excluded (other than a few I already identified) or added (perhaps determined from others like proximity measures) and whether transformations are sensible. Somewhat longer after coffee, I'll explain more fully!
+Bests Emma
