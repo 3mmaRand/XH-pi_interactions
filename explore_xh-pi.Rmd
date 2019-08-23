@@ -89,6 +89,18 @@ hightemp <- do.call("rbind",
 * high resolution:  `r nrow(highres)`
 * high temperature:  `r nrow(hightemp)`
 
+```{r}
+glimpse(neutron)
+```
+```{r}
+glimpse(highres)
+```
+
+```{r}
+glimpse(hightemp)
+```
+
+Note, we don't have resolution data for highres or hightemp
 
 ## Interaction types
 
@@ -127,69 +139,119 @@ ggplot(hightempsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
   theme(axis.text.x = element_text(angle = 90))
 ```
 
-# Clustering mised data types
+# Clustering mixed data types
 
- 
+Used R [@R-Core] with packages tidyverse [@tidyverse] and data.table [@data.table] to perform partitioning around medoids (PAM) [@kaufmanl1987clustering, kaufmanl1990clustering] to cluster based on Gower distance [@gower1971] both implemented in the cluster package [@cluster]  
 
 
-distance calculation - gower distance
-clustering algorithm - partitioning aroung medoids
-selecting the number of clusters - silhouette width
+* distance calculation - gower distance
+* clustering algorithm - partitioning aroung medoids
+* selecting the number of clusters - silhouette width
 
-<!-- glimpse(neutron) -->
-<!--  testing on neutron because it has resolution data (others have xxxx) -->
+```{r}
 
-<!--  some variables will not used to cluster -->
-<!-- neutron2 <- neutron %>%  -->
-<!--   select(-x_res_num,  -->
-<!--          -x_atom_num,  -->
-<!--          -pdb,  -->
-<!--          -pi_res_num, -->
-<!--          -resolution) -->
+```
 
-<!--  char need to be converted to factors -->
-<!-- neutron2 <- neutron2 %>% mutate_if(is.character,as.factor) -->
-<!-- glimpse(neutron2) -->
+## neutron
 
-<!--  calc distances without any transformations in first instance -->
-<!-- gower_dist <- daisy(neutron2, -->
-<!--                     metric = "gower") -->
-<!-- summary(gower_dist) -->
+Some variables will not used in clustering: 
+* x_res_num
+* x_atom_num
+* pdb
+* pi_res_num
+* resolution
 
-<!--  which observations are least and most similar -->
-<!--  most similar i.e., min disimilarity -->
-<!-- gower_mat <- as.matrix(gower_dist) -->
-<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
+```{r}
+# remove variables not used in clustering
+neutron2 <- neutron %>%
+  select(-x_res_num,
+         -x_atom_num,
+         -pdb,
+         -pi_res_num,
+         -resolution)
 
-<!--  least similar i.e., max disimilarity -->
-<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
+# char need to be converted to factors
+neutron2 <- neutron2 %>% mutate_if(is.character,as.factor)
+```
 
-<!--  cluster with PAM partitioning round medoids -->
+### Distance calculation, no variable transformations applied
 
-<!--  selecting the number of clusters with silhouette width -->
-<!--  calculating silhouette width for clusters ranging from 2 to cnum  -->
-<!--  for the PAM algorithm, we see that 3 clusters yields the highest value. -->
-<!-- sil_width <- c(NA) -->
-<!-- cnum <- 40 -->
+```{r}
+# calc distances without any transformations in first instance
+gower_dist <- daisy(neutron2,
+                    metric = "gower")
+summary(gower_dist)
+```
+Which observations are least and most similar?
 
-<!-- for(i in 2:cnum){ -->
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
 
-<!--   pam_fit <- pam(gower_dist, -->
-<!--                  diss = TRUE, -->
-<!--                  k = i) -->
+**least similar i.e., max disimilarity**
+```{r}
+neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
 
-<!--   sil_width[i] <- pam_fit$silinfo$avg.width -->
 
-<!-- } -->
 
-<!--  Plot sihouette width (higher is better) -->
 
-<!-- plot(1:cnum, sil_width, -->
-<!--      xlab = "Number of clusters", -->
-<!--      ylab = "Silhouette Width") -->
-<!-- lines(1:cnum, sil_width) -->
+### Cluster with PAM partitioning round medoids
+
+
+```{r}
+sil_width <- c(NA)
+cnum <- 25
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
+
+# Plot sihouette width (higher is better)
+The silhouette width, measure for selecting the number of clusters, was calculated for clusters ranging from 2 to `r cnum`
+A higher silhouette width is better. Ideally, one sees it peak and fall again 
+
+
+```{r}
+plot(1:cnum, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:cnum, sil_width)
+```
+
+
+```{r}
+sil_width <- c(NA)
+cnum <- 80
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
+Since the silhouette width was still increasing, I tried raising to 80.
+```{r}
+plot(1:cnum, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:cnum, sil_width)
+```
 
 <!--  vis -->
 <!-- tsne_obj <- Rtsne(gower_dist, is_distance = TRUE) -->
@@ -226,7 +288,7 @@ selecting the number of clusters - silhouette width
 <!--  cluster with PAM partitioning round medoids -->
 
 <!--  selecting the number of clusters with silhouette width -->
-<!--  calculating silhouette width for clusters ranging from 2 to cnum  -->
+<!--  calculating silhouette width for clusters ranging from 2 to cnum -->
 <!--  for the PAM algorithm, we see that 3 clusters yields the highest value. -->
 <!-- sil_width <- c(NA) -->
 <!-- cnum <- 40 -->
