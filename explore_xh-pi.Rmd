@@ -89,14 +89,14 @@ hightemp <- do.call("rbind",
 * high resolution:  `r nrow(highres)`
 * high temperature:  `r nrow(hightemp)`
 
-```{r}
+```{r eval=FALSE}
 glimpse(neutron)
 ```
-```{r}
+```{r eval=FALSE}
 glimpse(highres)
 ```
 
-```{r}
+```{r eval=FALSE}
 glimpse(hightemp)
 ```
 
@@ -148,10 +148,6 @@ Used R [@R-Core] with packages tidyverse [@tidyverse] and data.table [@data.tabl
 * clustering algorithm - partitioning aroung medoids
 * selecting the number of clusters - silhouette width
 
-```{r}
-
-```
-
 ## neutron
 
 Some variables will not used in clustering: 
@@ -200,12 +196,12 @@ neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
 
 
 
-### Cluster with PAM partitioning round medoids
+#### Cluster with PAM partitioning round medoids
 
 
-```{r}
-sil_width <- c(NA)
+```{r eval=FALSE}
 cnum <- 25
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
 
@@ -213,27 +209,27 @@ for(i in 2:cnum){
                  diss = TRUE,
                  k = i)
 
-  sil_width[i] <- pam_fit$silinfo$avg.width
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
 
 }
 ```
 
-# Plot sihouette width (higher is better)
+
 The silhouette width, measure for selecting the number of clusters, was calculated for clusters ranging from 2 to `r cnum`
 A higher silhouette width is better. Ideally, one sees it peak and fall again 
 
 
-```{r}
-plot(1:cnum, sil_width,
-     xlab = "Number of clusters",
-     ylab = "Silhouette Width")
-lines(1:cnum, sil_width)
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/neutron1.png")
 ```
 
-
-```{r}
-sil_width <- c(NA)
+![](figs/neutron1.png)
+```{r eval=FALSE}
 cnum <- 80
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
 
@@ -241,17 +237,231 @@ for(i in 2:cnum){
                  diss = TRUE,
                  k = i)
 
-  sil_width[i] <- pam_fit$silinfo$avg.width
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
 
 }
 ```
+
 Since the silhouette width was still increasing, I tried raising to 80.
-```{r}
-plot(1:cnum, sil_width,
-     xlab = "Number of clusters",
-     ylab = "Silhouette Width")
-lines(1:cnum, sil_width)
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/neutron2.png")
 ```
+![](figs/neutron2.png)
+
+Possibly beginning to flatten but this many clusters is difficult to interpret and may be uninformative
+Gower distance is sensitive to non-normality and extreme values in the continuous variable and transformations of these might help.
+The continuous variables are: x_bfactor, pi_bfactor, Xdist, Xtheta, planar_angle, x_height and x_width. Their distributions are as follows:
+
+```{r}
+neutron2 %>% select(x_bfactor,
+                    pi_bfactor,
+                    Xdist,
+                    Xtheta,
+                    planar_angle,
+                    x_height,
+                    x_width) %>% 
+  gather(key = variable, value = value) %>%  
+  ggplot(., aes(x = value)) + 
+  geom_density()  + 
+  facet_wrap(. ~ variable, nrow = 2, scales = "free")
+  
+```
+Log transformed variables have the following distributions
+
+```{r}
+neutron2 %>% select(x_bfactor,
+                    pi_bfactor,
+                    Xdist,
+                    Xtheta,
+                    planar_angle,
+                    x_height,
+                    x_width) %>% 
+  gather(key = variable, value = value) %>%  
+  ggplot(., aes(x = value)) + 
+  geom_density()  + 
+  scale_x_continuous(trans = "log2") +
+  facet_wrap(. ~ variable, nrow = 2, scales = "free")
+  
+```
+
+It appears that bfactors would benefit from log transformation when calculating the distances. These are straightfroawrd to apply so will be done first. x_width and xtheta might benefit from some transformation (squaring or ranking maybe).
+
+### Distance calculation, transformed b-factors
+
+```{r}
+gower_dist <- daisy(neutron2,
+                    metric = "gower",
+                    type = list(logratio = c("x_bfactor",
+                                             "pi_bfactor")))
+summary(gower_dist)
+```
+Which observations are least and most similar?
+
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+**least similar i.e., max disimilarity**
+```{r}
+neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+#### Cluster with PAM partitioning round medoids
+
+
+```{r eval=FALSE}
+cnum <- 25
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
+
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/neutron3.png")
+```
+
+![](figs/neutron3.png)
+
+```{r eval=FALSE}
+cnum <- 80
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/neutron4.png")
+
+```
+
+The b-factor transformation has made little impact.
+
+Is this the same for the other structure determination methods?
+
+## High resolution
+
+Some variables will not used in clustering: 
+* x_res_num
+* x_atom_num
+* pdb
+* pi_res_num
+* resolution
+
+```{r}
+# remove variables not used in clustering
+highres2 <- highres %>%
+  select(-x_res_num,
+         -x_atom_num,
+         -pdb,
+         -pi_res_num,
+         -resolution)
+
+# char need to be converted to factors
+highres2 <- highres2 %>% mutate_if(is.character,as.factor)
+```
+
+### Distance calculation, no variable transformations applied
+
+```{r}
+# calc distances without any transformations in first instance
+gower_dist <- daisy(highres2,
+                    metric = "gower")
+summary(gower_dist)
+```
+Which observations are least and most similar?
+
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+highres2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+**least similar i.e., max disimilarity**
+```{r}
+highres2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+
+
+
+#### Cluster with PAM partitioning round medoids
+
+n.b. many more observations so clustering takes much longer
+```{r eval=FALSE}
+cnum <- 35
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/highres1.png")
+
+```
+
+
+
+
+
+<!--  which observations are least and most similar -->
+<!--  most similar i.e., min disimilarity -->
+<!-- gower_mat <- as.matrix(gower_dist) -->
+<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+<!--  least similar i.e., max disimilarity -->
+<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
+<!--                arr.ind = TRUE)[1, ], ] -->
+
+
+
 
 <!--  vis -->
 <!-- tsne_obj <- Rtsne(gower_dist, is_distance = TRUE) -->
@@ -264,50 +474,5 @@ lines(1:cnum, sil_width)
 <!-- ggplot(aes(x = X, y = Y), data = tsne_data) + -->
 <!--   geom_point(aes(color = cluster)) -->
 
-<!--  consider nature of the variables before clustering -->
-
-<!-- glimpse(neutron2) -->
-
-<!-- hist(neutron2$x_width) -->
-<!--  log the bfactors -->
-<!-- gower_dist <- daisy(neutron2, -->
-<!--                     metric = "gower", -->
-<!--                     type = list(logratio = 4, -->
-<!--                                 logratio = 8)) -->
-
-<!--  which observations are least and most similar -->
-<!--  most similar i.e., min disimilarity -->
-<!-- gower_mat <- as.matrix(gower_dist) -->
-<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
-
-<!--  least similar i.e., max disimilarity -->
-<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
-
-<!--  cluster with PAM partitioning round medoids -->
-
-<!--  selecting the number of clusters with silhouette width -->
-<!--  calculating silhouette width for clusters ranging from 2 to cnum -->
-<!--  for the PAM algorithm, we see that 3 clusters yields the highest value. -->
-<!-- sil_width <- c(NA) -->
-<!-- cnum <- 40 -->
-
-<!-- for(i in 2:cnum){ -->
-
-<!--   pam_fit <- pam(gower_dist, -->
-<!--                  diss = TRUE, -->
-<!--                  k = i) -->
-
-<!--   sil_width[i] <- pam_fit$silinfo$avg.width -->
-
-<!-- } -->
-
-<!--  Plot sihouette width (higher is better) -->
-
-<!-- plot(1:cnum, sil_width, -->
-<!--      xlab = "Number of clusters", -->
-<!--      ylab = "Silhouette Width") -->
-<!-- lines(1:cnum, sil_width) -->
 
 # references
