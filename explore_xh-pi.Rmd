@@ -38,6 +38,7 @@ library(tidyverse)
 library(data.table)
 library(cluster)
 library(Rtsne)
+library(GGally)
 ```
 
 ```{r}
@@ -141,34 +142,49 @@ ggplot(hightempsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
 
 # Clustering mixed data types
 
-Used R [@R-Core] with packages tidyverse [@tidyverse] and data.table [@data.table] to perform partitioning around medoids (PAM) [@kaufmanl1987clustering, kaufmanl1990clustering] to cluster based on Gower distance [@gower1971] both implemented in the cluster package [@cluster]  
+Used R [@R-Core] with packages tidyverse [@tidyverse] and data.table [@data.table] to perform partitioning around medoids (PAM) [@kaufmanl1987clustering, @kaufmanl1990clustering] to cluster based on Gower distance [@gower1971] both implemented in the cluster package [@cluster]  
 
 
 * distance calculation - gower distance
 * clustering algorithm - partitioning aroung medoids
 * selecting the number of clusters - silhouette width
 
-## neutron
+## Neutron
 
 Some variables will not used in clustering: 
+
 * x_res_num
 * x_atom_num
+* x_chain
 * pdb
 * pi_res_num
 * resolution
+* pi_chain
 
 ```{r}
 # remove variables not used in clustering
 neutron2 <- neutron %>%
   select(-x_res_num,
          -x_atom_num,
+         -x_chain,
          -pdb,
          -pi_res_num,
-         -resolution)
+         -resolution,
+         -pi_chain)
 
 # char need to be converted to factors
 neutron2 <- neutron2 %>% mutate_if(is.character,as.factor)
 ```
+
+### Relationships between variables
+```{r}
+neutron2 %>% 
+  select(-x_res_id,
+         -x_atom_id) %>% 
+  ggpairs() 
+```
+
+
 
 ### Distance calculation, no variable transformations applied
 
@@ -197,10 +213,13 @@ neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
 
 
 #### Cluster with PAM partitioning round medoids
+```{r}
+cnum <- 25
+```
 
 
 ```{r eval=FALSE}
-cnum <- 25
+
 sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
@@ -227,8 +246,14 @@ ggsave("figs/neutron1.png")
 ```
 
 ![](figs/neutron1.png)
-```{r eval=FALSE}
+
+
+```{r}
 cnum <- 80
+```
+
+```{r eval=FALSE}
+
 sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
@@ -271,6 +296,7 @@ neutron2 %>% select(x_bfactor,
   facet_wrap(. ~ variable, nrow = 2, scales = "free")
   
 ```
+
 Log transformed variables have the following distributions
 
 ```{r}
@@ -316,9 +342,12 @@ neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
 ```
 #### Cluster with PAM partitioning round medoids
 
+```{r}
+cnum <- 25
+```
 
 ```{r eval=FALSE}
-cnum <- 25
+
 sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
@@ -343,8 +372,13 @@ ggsave("figs/neutron3.png")
 
 ![](figs/neutron3.png)
 
-```{r eval=FALSE}
+```{r}
 cnum <- 80
+```
+
+
+```{r eval=FALSE}
+
 sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
@@ -374,11 +408,13 @@ Is this the same for the other structure determination methods?
 ## High resolution
 
 Some variables will not used in clustering: 
+
 * x_res_num
 * x_atom_num
 * pdb
 * pi_res_num
 * resolution
+note: pi_chain and x_chain are retained
 
 ```{r}
 # remove variables not used in clustering
@@ -391,6 +427,14 @@ highres2 <- highres %>%
 
 # char need to be converted to factors
 highres2 <- highres2 %>% mutate_if(is.character,as.factor)
+```
+
+### Relationships between variables
+```{r}
+highres2 %>% 
+  select(-x_res_id,
+         -x_atom_id) %>% 
+  ggpairs() 
 ```
 
 ### Distance calculation, no variable transformations applied
@@ -420,10 +464,13 @@ highres2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
 
 
 #### Cluster with PAM partitioning round medoids
+```{r}
+cnum <- 35
+```
 
 n.b. many more observations so clustering takes much longer
 ```{r eval=FALSE}
-cnum <- 35
+
 sil_width <- data.frame(clusters = 1:cnum, width = NA)
 
 for(i in 2:cnum){
@@ -447,19 +494,242 @@ ggsave("figs/highres1.png")
 ```
 
 
+Distributions of the continuous variables: x_bfactor, pi_bfactor, Xdist, Xtheta, planar_angle, x_height and x_width. 
+
+```{r}
+highres2 %>% select(x_bfactor,
+                    pi_bfactor,
+                    Xdist,
+                    Xtheta,
+                    planar_angle,
+                    x_height,
+                    x_width) %>% 
+  gather(key = variable, value = value) %>%  
+  ggplot(., aes(x = value)) + 
+  geom_density()  + 
+  facet_wrap(. ~ variable, nrow = 2, scales = "free")
+  
+```
+
+
+### Distance calculation, transformed b-factors
+
+```{r}
+gower_dist <- daisy(highres2,
+                    metric = "gower",
+                    type = list(logratio = c("x_bfactor",
+                                             "pi_bfactor")))
+summary(gower_dist)
+```
+Which observations are least and most similar?
+
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+highres2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+**least similar i.e., max disimilarity**
+```{r}
+highres2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+#### Cluster with PAM partitioning round medoids
+```{r}
+cnum <- 35
+```
+
+
+```{r eval=FALSE}
+
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+
+}
+```
 
 
 
-<!--  which observations are least and most similar -->
-<!--  most similar i.e., min disimilarity -->
-<!-- gower_mat <- as.matrix(gower_dist) -->
-<!-- neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/highres2.png")
+```
 
-<!--  least similar i.e., max disimilarity -->
-<!-- neutron2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), -->
-<!--                arr.ind = TRUE)[1, ], ] -->
+![](figs/highres2.png)
 
+## High temperature
+
+Some variables will not used in clustering: 
+
+* x_res_num
+* x_atom_num
+* pdb
+* pi_res_num
+* resolution
+* pi_chain
+* x_chain
+
+```{r}
+# remove variables not used in clustering
+hightemp2 <- hightemp %>%
+  select(-x_res_num,
+         -x_atom_num,
+         -x_chain,
+         -pdb,
+         -pi_res_num,
+         -pi_chain,
+         -resolution)
+
+# char need to be converted to factors
+hightemp2 <- hightemp2 %>% mutate_if(is.character,as.factor)
+```
+
+### Relationships between variables
+```{r}
+hightemp2 %>% 
+  select(-x_res_id,
+         -x_atom_id) %>% 
+  ggpairs() 
+```
+
+### Distance calculation, no variable transformations applied
+
+```{r}
+# calc distances without any transformations in first instance
+gower_dist <- daisy(hightemp2,
+                    metric = "gower")
+summary(gower_dist)
+```
+Which observations are least and most similar?
+  
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+hightemp2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+**least similar i.e., max disimilarity**
+```{r}
+hightemp2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+
+
+
+#### Cluster with PAM partitioning round medoids
+```{r}
+cnum <- 35
+```
+
+```{r eval=FALSE}
+
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+  
+}
+```
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/hightemp1.png")
+
+```
+
+
+Distributions of the continuous variables: x_bfactor, pi_bfactor, Xdist, Xtheta, planar_angle, x_height and x_width. 
+
+```{r}
+hightemp2 %>% select(x_bfactor,
+                    pi_bfactor,
+                    Xdist,
+                    Xtheta,
+                    planar_angle,
+                    x_height,
+                    x_width) %>% 
+  gather(key = variable, value = value) %>%  
+  ggplot(., aes(x = value)) + 
+  geom_density()  + 
+  facet_wrap(. ~ variable, nrow = 2, scales = "free")
+
+```
+
+
+### Distance calculation, transformed b-factors
+
+```{r}
+gower_dist <- daisy(hightemp2,
+                    metric = "gower",
+                    type = list(logratio = c("x_bfactor",
+                                             "pi_bfactor")))
+summary(gower_dist)
+```
+Which observations are least and most similar?
+  
+**most similar i.e., min disimilarity**
+```{r}
+gower_mat <- as.matrix(gower_dist)
+hightemp2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+
+**least similar i.e., max disimilarity**
+```{r}
+hightemp2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+               arr.ind = TRUE)[1, ], ]
+```
+#### Cluster with PAM partitioning round medoids
+
+```{r}
+cnum <- 35
+```
+
+```{r eval=FALSE}
+
+sil_width <- data.frame(clusters = 1:cnum, width = NA)
+
+for(i in 2:cnum){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width$width[i] <- pam_fit$silinfo$avg.width
+  
+}
+```
+
+
+
+```{r eval = FALSE}
+ggplot(sil_width, aes(x = clusters, y = width)) +
+  geom_point() +
+  geom_line()
+ggsave("figs/hightemp2.png")
+```
+
+![](figs/hightemp2.png)
 
 
 
