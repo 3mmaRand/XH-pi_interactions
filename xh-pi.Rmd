@@ -1,7 +1,7 @@
 ---
 title: "Xh-pi interactions"
 author: "Emma Rand"
-date: "22/08/2019"
+date: "29/08/2019"
 output:
   pdf_document: bookdown::pdf_document2
   html_document: bookdown::html_document2
@@ -15,95 +15,65 @@ knitr::opts_chunk$set(echo = FALSE,
                       message = FALSE)
 ```
 
-# Data used
-data files in "../xhpi_data_new/" are in three directories, one for each data-set.
-
-* Neu_43_adv neutron diffraction
-* Res_43_adv high resolution
-* Temp_43_adv high temperature
-
-Number of structures in each varies
-
-Each protein has 3 files
-
-* 7a3h.pdb
-* 7a3h.hpml
-* 7a3h.pdb.report
-.report files are the plain text files containing information about the XH/pi interactions.
-
-Geometric constraints for this data was d<7 and theta<50, although cut-offs of d<4.3 angstroms and theta<25 deg are often used to define XH/pi interactions,  so many of the interactions reported are not actually XH/pi interactions.
 
 ```{r pkgs}
 library(tidyverse)
 library(data.table)
+library(janitor)
 library(cluster)
 library(Rtsne)
 library(GGally)
 ```
 
+# Data used
+data file in "../xhpi_data_v3/" 
+
+
 ```{r}
 # IMPORT HIGH RES
-directory <- "../xhpi_data_new/Res_43_adv/"
-reports <- list.files(path = directory, pattern = "*.pdb.report")
-number <- length(reports)
+file <- "../xhpi_data_v3/general_database_report.csv"
+inters <- read.csv(file) %>% clean_names()
 
-highres <- do.call("rbind", 
-                   lapply(paste0(directory,"/", reports[1:number]),
-                          function(x) read.table(x, 
-                                                 header = TRUE,
-                                                 stringsAsFactors = FALSE)))
-
-# this results in 4305 interactions
-
-
-
-# IMPORT NEUTRON DIFFRACTION
-directory <- "../xhpi_data_new/Neu_43_adv/"
-reports <- list.files(path = directory, pattern = "*.pdb.report")
-number <- length(reports)
-
-neutron <- do.call("rbind", 
-                   lapply(paste0(directory,"/", reports[1:number]),
-                          function(x) read.table(x, 
-                                                 header = TRUE,
-                                                 stringsAsFactors = FALSE)))
-
-# this results in 772 interactions
+# tidy some variable. 
+# turn resolution into a number
+inters$resolution <- inters$resolution %>% as.character() %>% as.numeric()
+no_resol <- summary(inters$resolution)["NA's"]
+# calculate donor-accept separation
+inters$seperation <- inters$x_res_num - inters$pi_res_num
+glimpse(inters)
+```
+Database has `r nrow(inters)` interactions in `r length(unique(inters$pdb_id))` proteins. There are `r no_resol` without resolution. Donor/acceptor separation was calcaluated by x_res_num - pi_res_num.
 
 
-# IMPORT HIGH TEMPERATURE
-directory <- "../xhpi_data_new/Temp_43_adv/"
-reports <- list.files(path = directory, pattern = "*.pdb.report")
-number <- length(reports)
-
-hightemp <- do.call("rbind", 
-                   lapply(paste0(directory,"/", reports[1:number]),
-                          function(x) read.table(x, 
-                                                 header = TRUE,
-                                                 stringsAsFactors = FALSE)))
-
-# this results in 1788 interactions
+```{r}
+inters <- inters %>% filter(is.na(resolution)) %>% filter(resolution)
+  group_by(pdb_id) %>% 
+  count()
 ```
 
 
-## Number of interactions
-* neutron diffraction: `r nrow(neutron)`
-* high resolution:  `r nrow(highres)`
-* high temperature:  `r nrow(hightemp)`
-
+```{r}
+intperprot <- inters %>% 
+  group_by(pdb_id) %>% 
+  count()
+ggplot(data = intperprot, aes(x = n)) +
+  geom_density() +
+  xlab("Number of interactions") +
+  ylab("Number of proteins")
+```
+# EDA
 ```{r eval=FALSE}
-glimpse(neutron)
-```
-```{r eval=FALSE}
-glimpse(highres)
+inters %>% 
+  select(resolution,
+         x_dist,
+         x_theta,
+         planar_angle,
+         seperation) %>% 
+  ggpairs()
+ggsave("figs/eda.png")
 ```
 
-```{r eval=FALSE}
-glimpse(hightemp)
-```
-
-Note, we don't have resolution data for highres or hightemp
-
+![eda](figs/eda.png)
 
 ## Interaction types
 
@@ -112,35 +82,17 @@ Raw counts, not normalised
 ```{r}
 # crosstabulate donor type and acceptor types
 # highres
-highressum <- highres %>% 
+interssum <- inters %>% 
   group_by(x_atom_id, pi_res_id) %>% 
   count() 
 
-ggplot(highressum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
+ggplot(interssum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
   geom_tile() +
   ggtitle("High res") + 
   theme(axis.text.x = element_text(angle = 90))
 
-# neutron
-neutronsum <- neutron %>% 
-  group_by(x_atom_id, pi_res_id) %>% 
-  count()
-
-ggplot(neutronsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
-  geom_tile() +
-  ggtitle("Neutron") + 
-  theme(axis.text.x = element_text(angle = 90))
-
-# hightemp
-hightempsum <- hightemp %>% 
-  group_by(x_atom_id, pi_res_id) %>% 
-  count()
-
-ggplot(hightempsum, aes(x = x_atom_id, y = pi_res_id, fill = n)) +
-  geom_tile() +
-  ggtitle("High temp") + 
-  theme(axis.text.x = element_text(angle = 90))
 ```
+
 
 # Clustering mixed data types
 
@@ -151,50 +103,29 @@ Used R [@R-Core] with packages tidyverse [@tidyverse] and data.table [@data.tabl
 * clustering algorithm - partitioning aroung medoids
 * selecting the number of clusters - silhouette width
 
-## Neutron
-
-Some variables will not used in clustering: 
-
-* x_res_num
-* x_atom_num
-* x_chain
-* pdb
-* pi_res_num
-* resolution
-* pi_chain
 
 ```{r}
-# remove variables not used in clustering
-neutron2 <- neutron %>%
-  select(-x_res_num,
-         -x_atom_num,
-         -x_chain,
-         -pdb,
-         -pi_res_num,
-         -resolution,
-         -pi_chain)
+# select variables used in clustering
+inters2 <- inters %>% 
+  select(x_res_id, 
+         x_atom_id, #replace with property
+         x_dist,
+         x_theta,
+         planar_angle,
+         pi_res_id,
+         seperation) 
 
-# char need to be converted to factors
-neutron2 <- neutron2 %>% mutate_if(is.character,as.factor)
+inters3 <- sample_n(inters2, 20000, replace = FALSE, prob = NULL)
 ```
 
-Variables used in cluserting are: `r names(neutron2)`
-
-### Relationships between variables
-```{r}
-neutron2 %>% 
-  select(-x_res_id,
-         -x_atom_id) %>% 
-  ggpairs() 
-```
-
+Variables used in cluserting are: `r names(inters2)`
 
 
 ### Distance calculation, no variable transformations applied
 
 ```{r}
 # calc distances without any transformations in first instance
-gower_dist <- daisy(neutron2,
+gower_dist <- daisy(inters3,
                     metric = "gower")
 summary(gower_dist)
 ```
@@ -203,7 +134,7 @@ Which observations are least and most similar?
 **most similar i.e., min disimilarity**
 ```{r}
 gower_mat <- as.matrix(gower_dist)
-neutron2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+inters3[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
                arr.ind = TRUE)[1, ], ]
 ```
 
@@ -409,169 +340,7 @@ The b-factor transformation has made little impact.
 
 Is this the same for the other structure determination methods?
 
-## High resolution
 
-Some variables will not used in clustering: 
-
-* x_res_num
-* x_atom_num
-* pdb
-* pi_res_num
-* resolution
-note: pi_chain and x_chain are retained
-
-```{r}
-# remove variables not used in clustering
-highres2 <- highres %>%
-  select(-x_res_num,
-         -x_atom_num,
-         -pdb,
-         -pi_res_num,
-         -resolution)
-
-# char need to be converted to factors
-highres2 <- highres2 %>% mutate_if(is.character,as.factor)
-```
-
-Variables used in cluserting are: `r names(highres2)`
-
-### Relationships between variables
-```{r}
-highres2 %>% 
-  select(-x_res_id,
-         -x_atom_id) %>% 
-  ggpairs() 
-```
-
-### Distance calculation, no variable transformations applied
-
-```{r}
-# calc distances without any transformations in first instance
-gower_dist <- daisy(highres2,
-                    metric = "gower")
-summary(gower_dist)
-```
-Which observations are least and most similar?
-
-**most similar i.e., min disimilarity**
-```{r}
-gower_mat <- as.matrix(gower_dist)
-highres2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
-               arr.ind = TRUE)[1, ], ]
-```
-
-**least similar i.e., max disimilarity**
-```{r}
-highres2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
-               arr.ind = TRUE)[1, ], ]
-```
-
-
-
-
-#### Cluster with PAM partitioning round medoids
-```{r}
-cnum <- 35
-```
-
-n.b. many more observations so clustering takes much longer
-```{r eval=FALSE}
-
-sil_width <- data.frame(clusters = 1:cnum, width = NA)
-
-for(i in 2:cnum){
-
-  pam_fit <- pam(gower_dist,
-                 diss = TRUE,
-                 k = i)
-
-  sil_width$width[i] <- pam_fit$silinfo$avg.width
-
-}
-```
-
-
-```{r eval = FALSE}
-ggplot(sil_width, aes(x = clusters, y = width)) +
-  geom_point() +
-  geom_line()
-ggsave("figs/highres1.png")
-
-```
-
-
-Distributions of the continuous variables: x_bfactor, pi_bfactor, Xdist, Xtheta, planar_angle, x_height and x_width. 
-
-```{r}
-highres2 %>% select(x_bfactor,
-                    pi_bfactor,
-                    Xdist,
-                    Xtheta,
-                    planar_angle,
-                    x_height,
-                    x_width) %>% 
-  gather(key = variable, value = value) %>%  
-  ggplot(., aes(x = value)) + 
-  geom_density()  + 
-  facet_wrap(. ~ variable, nrow = 2, scales = "free")
-  
-```
-
-
-### Distance calculation, transformed b-factors
-
-```{r}
-gower_dist <- daisy(highres2,
-                    metric = "gower",
-                    type = list(logratio = c("x_bfactor",
-                                             "pi_bfactor")))
-summary(gower_dist)
-```
-Which observations are least and most similar?
-
-**most similar i.e., min disimilarity**
-```{r}
-gower_mat <- as.matrix(gower_dist)
-highres2[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
-               arr.ind = TRUE)[1, ], ]
-```
-
-**least similar i.e., max disimilarity**
-```{r}
-highres2[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
-               arr.ind = TRUE)[1, ], ]
-```
-#### Cluster with PAM partitioning round medoids
-```{r}
-cnum <- 35
-```
-
-
-```{r eval=FALSE}
-
-sil_width <- data.frame(clusters = 1:cnum, width = NA)
-
-for(i in 2:cnum){
-
-  pam_fit <- pam(gower_dist,
-                 diss = TRUE,
-                 k = i)
-
-  sil_width$width[i] <- pam_fit$silinfo$avg.width
-
-}
-```
-
-
-
-```{r eval = FALSE}
-ggplot(sil_width, aes(x = clusters, y = width)) +
-  geom_point() +
-  geom_line()
-ggsave("figs/highres2.png")
-```
-
-![](figs/highres2.png)
 
 ## High temperature
 
