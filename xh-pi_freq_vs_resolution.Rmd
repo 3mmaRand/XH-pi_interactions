@@ -43,7 +43,8 @@ get_density <- function(x, y, ...) {
 ```{r}
 file <- "../xhpi_data_v3/xhpi_freq_res.csv"
 resfreq <- read.csv(file) %>% clean_names()
-
+#sort a dataframe
+resfreq <- resfreq %>% arrange(resolution)
 glimpse(resfreq)
 ```
 
@@ -70,48 +71,88 @@ ggplot(data = resfreq, aes(x = resolution, y = freq_per_100, colour = density)) 
   geom_hline(yintercept = intercept - intercept_se)
 ```
 
-```{r}
-library(rollRegres)
+# Regression
+## Fixed first-500 window of sorted resolutions
+```{r eval=FALSE}
+window <-  500
+# datframe will need to be sorted
+dfall <- data.frame(x = double(),
+                    y = double(),
+                    fit = double(),
+                    lwr = double(),
+                    upr = double(),
+                    win = integer())
 
+p <- double()
+slope <- double()
+resol <- double()
 
-
-# test
-# simulate data
-width  <- 20
-# n <- 20
-# df <- data.frame(y = sort(rnorm(n)), x = sort(rnorm(n)))
-#plot(df)
-# fits <- roll_regres(y ~ x, df, width = width, do_compute = "sigmas")
-# tail(fits$coefs)
-# tail(fits$sigmas)
-
-window <-  19
-mod1 <- lm(data = df[1:window,], y ~x)
-mod2 <- lm(data = df[(1+1):(window+1),], y ~x)
-pred1 <- predict(mod1, interval = "predict")
-pred2 <- predict(mod2, interval = "predict")
-df1 <- data.frame(df[1:window,], pred1,win=1)
-df2 <- data.frame(df[(1+1):(window+1),], pred2,win=2)
-df3 <- rbind(df1,df2)
-df3 <- df3 %>% gather(-x, -y, -fit, -win, key = line, value = value)
-
-
-ggplot() +
-  geom_line(data = df3, aes(x = x, y = value, linetype=factor(win), shape = line)) +
-  geom_point(data = df, aes(x = x, y = y)) +
-  geom_smooth(data = df, aes(x = x, y = y),
-              method = "lm", color = "black")
-
-
-for(i in 1:(nrow(df)-window+1)) {
+for(i in 1:(nrow(resfreq)-window+1)) {
   rowstart <- i
   rowstop <- i + window - 1
-  print(c(i, rowstart, rowstop))
-}
+  mod <- lm(data = resfreq[rowstart:rowstop,], freq_per_100 ~ resolution)
+  pred <- predict(mod, interval = "predict")
+  dftemp <- data.frame(resfreq[1:window,], pred, win = i)
+  p[i] <- summary(mod)$coefficients[2, 4]
+  slope[i] <- summary(mod)$coefficients[2, 1]
+  resol[i] <- resfreq$resolution[i]
+  dfall <- rbind(dfall, dftemp)
+  }
 
 
+res <- data.frame(p, slope, resol)
 
-
+ggplot(data= res, aes(x = resol, y = log(p))) +
+  geom_point() +
+  geom_hline(yintercept = log(0.05))
+ggsave("figs/reg500.png")
+write.table(res, "proc_data/res500.txt")
 ```
+
+Regressions were carried out for a moving window of 500 observations, i.e., the size of resolution window is dependent on the number of observations
+
+![](figs/reg500.png)
+```{r}
+ggplot(res, aes(x = slope)) +
+  geom_density()
+```
+
+```{r}
+res <- read.table("proc_data/res500.txt")
+res$sig <- FALSE
+res$sig[res$p< 0.05] <- TRUE
+sig <- table(res$sig)[2]
+```
+
+There were `r sig` regressions with signifcant slopes. 
+```{r}
+res <- res %>% filter(slope < 0)
+sig <- table(res$sig)[2]
+```
+When positive slopes are filtered out there are 0 signifcant slopes.
+
+
+```{r}
+ggplot(data = res, aes(x = resol, y = slope, color = sig)) +
+  geom_point(alpha = .3)
+```
+
+```{r}
+res %>% 
+  filter(sig) %>% 
+  ggplot(.,aes(x = slope)) +
+  geom_density()
+  
+```
+
+## Fixed resolution window
+
+For each 0.5 A window, 20 samples (with replacement) of 50 values were regressed
+
+```{r}
+windows <- c(0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
+```
+
+
 
 
