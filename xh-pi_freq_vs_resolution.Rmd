@@ -59,7 +59,7 @@ slope_se <- summary(mod)[["coefficients"]][2,2]
 The linear model of `freq_per_100 ~ resolution` has the equation:
 freq_per_100 = `r intercept` `r slope` * resolution
 
-The sample size makes it highly signifcant but the R squared value is low (`r summary(mod)$r.squared`) i.e., very little of the variation in the number of interactions can be explained by the resolution.
+The sample size makes it highly significant but the R squared value is low (`r summary(mod)$r.squared`) i.e., very little of the variation in the number of interactions can be explained by the resolution.
 
 ```{r}
 resfreq$density <- get_density(resfreq$resolution, 
@@ -84,10 +84,10 @@ slope_se <- summary(mod)[["coefficients"]][2,2]
 #summary(mod)
 ```
 
-When filtering the data for resolutions less tham `r cutoff`A there are `r nrow(resfreq2)` structures and the linear model of `freq_per_100 ~ resolution` has the equation:
+When filtering the data for resolutions less than `r cutoff`A there are `r nrow(resfreq2)` structures and the linear model of `freq_per_100 ~ resolution` has the equation:
 freq_per_100 = `r intercept` `r slope` * resolution
 
-which is still signifcant with an R squared value of (`r summary(mod)$r.squared`). 
+which is still significant with an R squared value of (`r summary(mod)$r.squared`). 
 
 ```{r}
 
@@ -112,7 +112,7 @@ slope_se <- summary(mod)[["coefficients"]][2,2]
 #summary(mod)
 ```
 
-At a cutoff resolution of `r cutoff`A there are `r nrow(resfreq2)` and the relationship disappears. 
+At a cut-off resolution of `r cutoff`A there are `r nrow(resfreq2)` and the relationship disappears. 
 
 ```{r}
 
@@ -173,7 +173,7 @@ Regressions were carried out for a moving window of 500 observations, i.e., the 
 
 ## Fixed resolution window
 
-Regressions were calculated from a random sample (with replacement) of 50 observations drawn from a 0.5A window moving by 0.05A. Twenty random samples were drawn for each window. Values collected:
+Regressions were calculated from a random sample (with replacement) of 50 observations drawn from a 0.5A window moving by 0.05A. 80 random samples were drawn for each window. Values collected:
 
 * slope of the linear regression
 * standard error on the slope
@@ -187,7 +187,7 @@ windows <- seq(from = 0.5, to = 3.2, by = 0.05)
 # number in each sample
 n <- 50
 # number of samples
-ns <- 20
+ns <- 80
 # initialise vectors for p values, slope and se
 slope = double()
 se = double()
@@ -201,7 +201,7 @@ resultper <- data.frame(wstart = double(),
                         se = double(),
                         p = double(),
                         q = double())
-# set.seed(233)
+
 for(i in 1:(length(windows) - 1) ) {
   wstart <- windows[i]
   wstop <- windows[i] + 0.5
@@ -271,7 +271,7 @@ ggplot(data = labelling, aes(x = wstart, y = pop)) +
 ```
 
 
-There are more negative than signifcant slopes and the large majority of the signifcant slopes are negative (p < 0.05).
+There are more negative than positive slopes and the large majority of the significant slopes are negative (p < 0.05).
 
 
 ```{r}
@@ -282,19 +282,38 @@ ggplot(resultper, aes(x = wstart, y = slope, color = sigp)) +
   xlab("Start of 0.5A resolution window") +
   ylab("slope") +
   scale_color_manual(values = c("grey", "black"), 
-                     name = "P Signifcance",
+                     name = "P Significance",
                      labels = c("NS", "p < 0.05")) +
   theme_classic()
 ```
+
+
+
+```{r}
+resultspersum <- resultper %>% 
+  group_by(wstart, direction) %>% 
+  summarise(
+  n = length(slope))
+```
+
+```{r}
+ggplot(resultspersum, aes(x = wstart, y = n, fill = direction)) +
+  geom_bar(stat = "identity", color ="black") +
+  xlab("Start of 0.5A resolution window") +
+  ylab("Number") +
+  scale_fill_manual(values = c("blue", "pink"), 
+                     name = "Slope",
+                     labels = c("negative", "postive")) +
+  theme_classic()
+```
+
+However, it is not the case that significant negative slopes start appearing at some resolution. A cut-off is not obvious.
 ```{r}
 resultspersum <- resultper %>% 
   group_by(wstart, sigp, direction) %>% 
   summarise(
   n = length(slope))
 ```
-
-However, it is not the case that signifcant negative slopes start appearing at some resolution. A cut-off is not obvious.
-
 ```{r}
 ggplot(resultspersum, aes(x = wstart, y = n, fill = sigp)) +
   geom_bar(stat = "identity") +
@@ -302,22 +321,23 @@ ggplot(resultspersum, aes(x = wstart, y = n, fill = sigp)) +
    xlab("Start of 0.5A resolution window") +
   ylab("Number") +
   scale_fill_manual(values = c("grey", "black"), 
-                     name = "P Signifcance",
+                     name = "P Significance",
                      labels = c("NS", "p < 0.05")) +
   theme_classic()
 ```
 
-If we considered the adjusted p-value which controls the false discovery rate (i.e., corrects for the number of tests done) the only signifcant slopes are negative but it is still the case that they appear at all resolutions.
+If we considered the adjusted p-value which controls the false discovery rate (i.e., corrects for the number of tests done) the significant slopes are mainly negative but it is still the case that they appear at all resolutions.
 
+(remember these are random samples and the outcomes with differ at little each time)
 
 ```{r}
 ggplot(resultper, aes(x = wstart, y = slope, color = sigq)) +
   geom_jitter(width = 0.025, alpha = 0.5) +
   geom_hline(yintercept = 0) +
-  xlab("Resolution window") +
+  xlab("Start of 0.5A resolution window") +
   ylab("slope") +
   scale_color_manual(values = c("grey", "black"), 
-                     name = "FDR Signifcance",
+                     name = "FDR Significance",
                      labels = c("NS", "q < 0.05")) +
   theme_classic()
 ```
