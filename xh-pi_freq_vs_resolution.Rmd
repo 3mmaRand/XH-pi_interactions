@@ -43,11 +43,8 @@ get_density <- function(x, y, ...) {
 ```{r}
 file <- "../xhpi_data_v3/xhpi_freq_res.csv"
 resfreq <- read.csv(file) %>% clean_names()
-#sort a dataframe
-resfreq <- resfreq %>% arrange(resolution)
-glimpse(resfreq)
 ```
-
+These data have `r nrow(resfreq)` structures.
 
 
 ```{r}
@@ -56,22 +53,83 @@ intercept <- summary(mod)[["coefficients"]][1,1]
 intercept_se <- summary(mod)[["coefficients"]][1,2]
 slope <- summary(mod)[["coefficients"]][2,1]
 slope_se <- summary(mod)[["coefficients"]][2,2]
+#summary(mod)
 ```
 
+The linear model of `freq_per_100 ~ resolution` has the equation:
+freq_per_100 = `r intercept` `r slope` * resolution
+
+The sample size makes it highly signifcant but the R squared value is low (`r summary(mod)$r.squared`) i.e., very little of the variation in the number of interactions can be explained by the resolution.
 
 ```{r}
 resfreq$density <- get_density(resfreq$resolution, 
                                resfreq$freq_per_100, n = 100)
-ggplot(data = resfreq, aes(x = resolution, y = freq_per_100, colour = density)) +
+p <- ggplot(data = resfreq, aes(x = resolution, y = freq_per_100, colour = density)) +
   geom_point() +
   geom_smooth(method="lm")+
   scale_color_viridis() +
-  geom_hline(yintercept = intercept) +
-  geom_hline(yintercept = intercept + intercept_se) +
-  geom_hline(yintercept = intercept - intercept_se)
+  theme_classic()
+  ggExtra::ggMarginal(p, type = "histogram")
 ```
 
-# Regression
+
+```{r}
+cutoff <- 1.5
+resfreq2 <- resfreq %>% filter(resolution < cutoff)
+mod <- lm(data = resfreq2, freq_per_100 ~ resolution)
+intercept <- summary(mod)[["coefficients"]][1,1]
+intercept_se <- summary(mod)[["coefficients"]][1,2]
+slope <- summary(mod)[["coefficients"]][2,1]
+slope_se <- summary(mod)[["coefficients"]][2,2]
+#summary(mod)
+```
+
+When filtering the data for resolutions less tham `r cutoff`A there are `r nrow(resfreq2)` structures and the linear model of `freq_per_100 ~ resolution` has the equation:
+freq_per_100 = `r intercept` `r slope` * resolution
+
+which is still signifcant with an R squared value of (`r summary(mod)$r.squared`). 
+
+```{r}
+
+resfreq2$density <- get_density(resfreq2$resolution, 
+                               resfreq2$freq_per_100, n = 100)
+p2 <- ggplot(data = resfreq2, aes(x = resolution, y = freq_per_100, colour = density)) +
+  geom_point() +
+  geom_smooth(method="lm")+
+  scale_color_viridis() +
+  theme_classic()
+  ggExtra::ggMarginal(p2, type = "histogram")
+```
+
+```{r}
+cutoff <- 1.3
+resfreq2 <- resfreq %>% filter(resolution < cutoff)
+mod <- lm(data = resfreq2, freq_per_100 ~ resolution)
+intercept <- summary(mod)[["coefficients"]][1,1]
+intercept_se <- summary(mod)[["coefficients"]][1,2]
+slope <- summary(mod)[["coefficients"]][2,1]
+slope_se <- summary(mod)[["coefficients"]][2,2]
+#summary(mod)
+```
+
+At a cutoff resolution of `r cutoff`A there are `r nrow(resfreq2)` and the relationship disappears. 
+
+```{r}
+
+resfreq2$density <- get_density(resfreq2$resolution, 
+                               resfreq2$freq_per_100, n = 100)
+p2 <- ggplot(data = resfreq2, aes(x = resolution, y = freq_per_100, colour = density)) +
+  geom_point() +
+  geom_smooth(method="lm")+
+  scale_color_viridis() +
+  theme_classic()
+  ggExtra::ggMarginal(p2, type = "histogram")
+```
+
+
+
+# Moving Window regression
+
 ## Fixed first-500 window of sorted resolutions
 ```{r eval=FALSE}
 window <-  500
@@ -112,18 +170,24 @@ write.table(res, "proc_data/res500.txt")
 Regressions were carried out for a moving window of 500 observations, i.e., the size of resolution window is dependent on the number of observations
 
 ![](figs/reg500.png)
+
 ## Fixed resolution window
 
-For each 0.5 A window, 20 samples (with replacement) of 50 values were regressed
+Regressions were calculated from a random sample (with replacement) of 50 observations drawn from a 0.5A window moving by 0.05A. Twenty random samples were drawn for each window. Values collected:
+
+* slope of the linear regression
+* standard error on the slope
+* p value obtained from testing the slope against zero
+* False discovery rate - the p value adjusted by the Benjamini & Hochberg method.
+
 
 ```{r}
 # window boundaries
-windows <- c(0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0)
-# windows <- c(0.5, 1.5, 2.5, 3.5) 
+windows <- seq(from = 0.5, to = 3.2, by = 0.05)
 # number in each sample
 n <- 50
 # number of samples
-ns <- 100
+ns <- 20
 # initialise vectors for p values, slope and se
 slope = double()
 se = double()
@@ -189,38 +253,70 @@ resultper$direction[resultper$slope < 0] <- "Negative"
 ```
 
 ```{r}
+labelling <- resultper %>% 
+  group_by(wstart) %>% 
+  summarise(pop = max(pop))
+```
+
+Size of the population available in each sample window. The red line indicates the size of the samples being drawn: 50
+
+
+```{r}
+ggplot(data = labelling, aes(x = wstart, y = pop)) +
+  geom_bar(stat = "identity") +
+  xlab("Start of 0.5A resolution window") +
+  ylab("Available number of Structures in window") +
+  geom_hline(yintercept = 50, color = "red") +
+  theme_classic()
+```
+
+
+There are more negative than signifcant slopes and the large majority of the signifcant slopes are negative (p < 0.05).
+
+
+```{r}
 
 ggplot(resultper, aes(x = wstart, y = slope, color = sigp)) +
-  geom_jitter(width = .2) +
+  geom_jitter(width = 0.025, alpha = 0.5) +
   geom_hline(yintercept = 0) +
-  xlab("Resolution window") +
+  xlab("Start of 0.5A resolution window") +
   ylab("slope") +
-  scale_color_manual(values = c("black", "pink"), 
+  scale_color_manual(values = c("grey", "black"), 
                      name = "P Signifcance",
                      labels = c("NS", "p < 0.05")) +
   theme_classic()
 ```
+```{r}
+resultspersum <- resultper %>% 
+  group_by(wstart, sigp, direction) %>% 
+  summarise(
+  n = length(slope))
+```
 
+However, it is not the case that signifcant negative slopes start appearing at some resolution. A cut-off is not obvious.
 
 ```{r}
-
-ggplot(resultper, aes(x = resband, y = slope, color = sigp)) +
-  geom_jitter(width = .2) +
-  geom_hline(yintercept = 0) +
-  xlab("Resolution window") +
-  ylab("slope") +
-  scale_color_manual(values = c("black", "pink"), 
+ggplot(resultspersum, aes(x = wstart, y = n, fill = sigp)) +
+  geom_bar(stat = "identity") +
+  facet_grid(. ~ direction) +
+   xlab("Start of 0.5A resolution window") +
+  ylab("Number") +
+  scale_fill_manual(values = c("grey", "black"), 
                      name = "P Signifcance",
                      labels = c("NS", "p < 0.05")) +
   theme_classic()
 ```
+
+If we considered the adjusted p-value which controls the false discovery rate (i.e., corrects for the number of tests done) the only signifcant slopes are negative but it is still the case that they appear at all resolutions.
+
+
 ```{r}
 ggplot(resultper, aes(x = wstart, y = slope, color = sigq)) +
-  geom_jitter(width = .2) +
+  geom_jitter(width = 0.025, alpha = 0.5) +
   geom_hline(yintercept = 0) +
   xlab("Resolution window") +
   ylab("slope") +
-  scale_color_manual(values = c("black", "pink"), 
+  scale_color_manual(values = c("grey", "black"), 
                      name = "FDR Signifcance",
                      labels = c("NS", "q < 0.05")) +
   theme_classic()
