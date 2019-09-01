@@ -112,47 +112,117 @@ write.table(res, "proc_data/res500.txt")
 Regressions were carried out for a moving window of 500 observations, i.e., the size of resolution window is dependent on the number of observations
 
 ![](figs/reg500.png)
-```{r}
-ggplot(res, aes(x = slope)) +
-  geom_density()
-```
-
-```{r}
-res <- read.table("proc_data/res500.txt")
-res$sig <- FALSE
-res$sig[res$p< 0.05] <- TRUE
-sig <- table(res$sig)[2]
-```
-
-There were `r sig` regressions with signifcant slopes. 
-```{r}
-res <- res %>% filter(slope < 0)
-sig <- table(res$sig)[2]
-```
-When positive slopes are filtered out there are 0 signifcant slopes.
-
-
-```{r}
-ggplot(data = res, aes(x = resol, y = slope, color = sig)) +
-  geom_point(alpha = .3)
-```
-
-```{r}
-res %>% 
-  filter(sig) %>% 
-  ggplot(.,aes(x = slope)) +
-  geom_density()
-  
-```
-
 ## Fixed resolution window
 
 For each 0.5 A window, 20 samples (with replacement) of 50 values were regressed
 
 ```{r}
-windows <- c(0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
+# window boundaries
+windows <- c(0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0)
+# windows <- c(0.5, 1.5, 2.5, 3.5) 
+# number in each sample
+n <- 50
+# number of samples
+ns <- 100
+# initialise vectors for p values, slope and se
+slope = double()
+se = double()
+p = double()
+# initialise results df
+resultper <- data.frame(wstart = double(),
+                        wstop = double(),
+                        pop = integer(),
+                        samplenum = integer(),
+                        slope = double(),
+                        se = double(),
+                        p = double(),
+                        q = double())
+# set.seed(233)
+for(i in 1:(length(windows) - 1) ) {
+  wstart <- windows[i]
+  wstop <- windows[i] + 0.5
+  tempsample <- data.frame(wstart = double(),
+                        wstop = double(),
+                        pop = integer(),
+                        samplenum = integer(),
+                        slope = double(),
+                        se = double(),
+                        p = double(),
+                        q = double())
+  subset <- resfreq %>% 
+    filter(resolution >= wstart, resolution < wstop)
+  pop <- nrow(subset)
+  for(j in 1:ns) {
+    samplenum <- j
+    subsetsample <- subset %>% 
+      sample_n(n, replace = TRUE)
+    mod <- lm(data = subsetsample, freq_per_100 ~ resolution)
+    p[j] <- summary(mod)$coefficients[2, 4]
+    slope[j] <- summary(mod)$coefficients[2, 1]
+    se[j] <- summary(mod)$coefficients[2,2]
+ #   print(c(wstart, wstop, pop, slope[j], se[j], p[j]))
+    temp <- data.frame(wstart,
+                       wstop,
+                       pop,
+                       samplenum,
+                       slope = slope[j],
+                       se = se[j],
+                       p = p[j],
+                       q = 0)
+    
+    tempsample <- rbind(tempsample, temp)
+    tempsample$q <- p.adjust(tempsample$p, method = "hochberg")
+  }
+  resultper <- rbind(resultper, tempsample)
+}
+
+
+resultper$resband <- paste(resultper$wstart,":", resultper$wstop)
+
+resultper$sigq <- TRUE
+resultper$sigq[resultper$q > 0.05] <- FALSE
+resultper$sigp <- TRUE
+resultper$sigp[resultper$p > 0.05] <- FALSE
+resultper$direction[resultper$slope > 0]  <- "Positive"
+resultper$direction[resultper$slope < 0] <- "Negative"
+
+```
+
+```{r}
+
+ggplot(resultper, aes(x = wstart, y = slope, color = sigp)) +
+  geom_jitter(width = .2) +
+  geom_hline(yintercept = 0) +
+  xlab("Resolution window") +
+  ylab("slope") +
+  scale_color_manual(values = c("black", "pink"), 
+                     name = "P Signifcance",
+                     labels = c("NS", "p < 0.05")) +
+  theme_classic()
 ```
 
 
+```{r}
 
+ggplot(resultper, aes(x = resband, y = slope, color = sigp)) +
+  geom_jitter(width = .2) +
+  geom_hline(yintercept = 0) +
+  xlab("Resolution window") +
+  ylab("slope") +
+  scale_color_manual(values = c("black", "pink"), 
+                     name = "P Signifcance",
+                     labels = c("NS", "p < 0.05")) +
+  theme_classic()
+```
+```{r}
+ggplot(resultper, aes(x = wstart, y = slope, color = sigq)) +
+  geom_jitter(width = .2) +
+  geom_hline(yintercept = 0) +
+  xlab("Resolution window") +
+  ylab("slope") +
+  scale_color_manual(values = c("black", "pink"), 
+                     name = "FDR Signifcance",
+                     labels = c("NS", "q < 0.05")) +
+  theme_classic()
+```
 
